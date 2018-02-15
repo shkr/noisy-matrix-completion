@@ -17,7 +17,7 @@ class MatrixDecomposition(object):
         """
         Decomposes an optionally incomplete matrix, into two components, one low rank, and one sparse.
         Also described here https://github.com/fela/matrix-completion
-        
+
         :param Y_obs: The matrix to decompose.
         It is supposed that Y is equal to TH + GA + W,
         where TH is an approximately low rank matrix,
