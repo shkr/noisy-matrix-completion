@@ -1,4 +1,3 @@
-import numpy as np
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
@@ -9,10 +8,7 @@ class MatrixDNN(torch.nn.Module):
                  obs,
                  n_factors,
                  learning_rate,
-                 x_reg,
-                 y_reg,
-                 xb_reg,
-                 yb_reg,
+                 l2_reg,
                  random_state=None,
                  verbose=False):
         """
@@ -28,11 +24,8 @@ class MatrixDNN(torch.nn.Module):
             Number of latent factors to use in matrix
             factorization model
 
-        x_reg : (float)
+        l2_reg : (float)
             Regularization term for x latent factors
-
-        y_reg : (float)
-            Regularization term for y latent factors
 
         verbose : (bool)
             Whether or not to printout training progress
@@ -43,10 +36,7 @@ class MatrixDNN(torch.nn.Module):
         self.obs_tensor = Variable(torch.from_numpy(np.asarray(self.obs, dtype=np.float32)))
         self.n_factors = n_factors
         self.learning_rate = learning_rate
-        self.x_reg = x_reg
-        self.y_reg = y_reg
-        self.xb_reg = xb_reg
-        self.yb_reg = yb_reg
+        self.l2_reg = l2_reg
         self.random_state = random_state
         self.verbose = verbose
         self.__set_model__()
@@ -84,9 +74,8 @@ class MatrixDNN(torch.nn.Module):
                                          embedding_dim=1,
                                          sparse=False)
 
-        self.loss_func = nn.MSELoss(reduce=False)
-
-        self.optim = torch.optim.Adagrad(self.parameters(), lr=self.learning_rate, weight_decay=self.x_reg)
+        self.loss_func = nn.MSELoss(reduce=True)
+        self.optim = torch.optim.Adagrad(self.parameters(), lr=self.learning_rate, weight_decay=self.l2_reg)
 
         self.sample_row, self.sample_col = self.obs.nonzero()
         self.n_samples = len(self.sample_row)
@@ -105,8 +94,29 @@ class MatrixDNN(torch.nn.Module):
     def __call__(self, *args):
         return self.forward(*args)
 
-    def predict(self, users, items):
-        return self.forward(users, items)
+    def sgd_minibatch(self):
+        """
+        SGD
+        :param type:
+        :return:
+        """
+        np.random.shuffle(self.training_indices)
+
+        u = Variable(torch.LongTensor(self.sample_row[self.training_indices]))
+        i = Variable(torch.LongTensor(self.sample_col[self.training_indices]))
+
+        obs_est = torch.matmul(self.X.weight, self.Y.weight.t()) + self.X_bias.weight + self.Y_bias.weight.t()
+
+        prediction = obs_est[self.sample_row[self.training_indices], self.sample_col[self.training_indices]]
+
+        target = self.obs_tensor[self.sample_row[self.training_indices], self.sample_col[self.training_indices]]
+
+        loss = self.loss_func(prediction, target)
+        self.loss = loss
+        total_loss = torch.Tensor([0])
+        loss.backward()
+        self.optim.step()
+        return loss.data
 
     def sgd_step(self):
         """
@@ -116,9 +126,10 @@ class MatrixDNN(torch.nn.Module):
         """
         np.random.shuffle(self.training_indices)
         total_loss = torch.Tensor([0])
-        for idx in self.training_indices:
-            self.optim.zero_grad()
 
+        self.optim.zero_grad()
+
+        for idx in self.training_indices:
             u = self.sample_row[idx]
             i = self.sample_col[idx]
 
@@ -143,7 +154,7 @@ class MatrixDNN(torch.nn.Module):
         while ctr <= n_iter:
             if ctr % 10 == 0 and self.verbose:
                 print '\tcurrent iteration: {}'.format(ctr)
-            total_loss += self.sgd_step()
+            total_loss += self.sgd_minibatch()
             ctr += 1
         print('Mean Loss :', (total_loss.numpy()[0] / n_iter))
 
@@ -156,4 +167,3 @@ class MatrixDNN(torch.nn.Module):
         res += self.X_bias.weight
         res += self.Y_bias.weight.t()
         return res.data.numpy()
-
