@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
-
+from torch.functional import  import F
 
 class MatrixDNN(torch.nn.Module):
     def __init__(self,
@@ -102,9 +102,6 @@ class MatrixDNN(torch.nn.Module):
         """
         np.random.shuffle(self.training_indices)
 
-        u = Variable(torch.LongTensor(self.sample_row[self.training_indices]))
-        i = Variable(torch.LongTensor(self.sample_col[self.training_indices]))
-
         obs_est = torch.matmul(self.X.weight, self.Y.weight.t()) + self.X_bias.weight + self.Y_bias.weight.t()
 
         prediction = obs_est[self.sample_row[self.training_indices], self.sample_col[self.training_indices]]
@@ -112,8 +109,6 @@ class MatrixDNN(torch.nn.Module):
         target = self.obs_tensor[self.sample_row[self.training_indices], self.sample_col[self.training_indices]]
 
         loss = self.loss_func(prediction, target)
-        self.loss = loss
-        total_loss = torch.Tensor([0])
         loss.backward()
         self.optim.step()
         return loss.data
